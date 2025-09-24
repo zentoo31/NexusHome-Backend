@@ -20,12 +20,10 @@ export class WebSocketService {
       // Enviar estado actual de todos los pines al nuevo cliente
       this.sendAllPinsState(ws);
 
-      // Manejar mensajes entrantes
       ws.on('message', (data: Buffer) => {
         this.handleMessage(ws, data);
       });
 
-      // Manejar cierre de conexión
       ws.on('close', () => {
         console.log('Client disconnected');
         if (ws === this.esp32Client) {
