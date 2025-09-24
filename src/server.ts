@@ -1,22 +1,24 @@
 import http from 'http';
 import WebSocket from 'ws';
 import { createApp } from './app';
-import { LedService } from './services/ledService';
+import { GpioService } from './services/GpioService';
 import { WebSocketService } from './services/webSocket.service';
 
-const ledService = new LedService();
-const server = http.createServer();
+const gpioService = new GpioService([15, 2, 4, 16, 17, 5, 18]);
+
 const PORT = process.env.PORT || 3000;
+const server = http.createServer();
 
 const wss = new WebSocket.Server({ server });
-const webSocketService = new WebSocketService(wss, ledService);
+const webSocketService = new WebSocketService(wss, gpioService);
 
-const app = createApp(ledService, webSocketService);
+const app = createApp(gpioService, webSocketService);
 
 server.on('request', app);
 
 server.listen(PORT, () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
+  console.log('Pines GPIO configurados:', gpioService.getAllPins().map(p => p.pin));
 });
 
 process.on('SIGTERM', () => {
@@ -26,4 +28,4 @@ process.on('SIGTERM', () => {
   });
 });
 
-export { server, webSocketService, ledService };
+export { server, webSocketService, gpioService };

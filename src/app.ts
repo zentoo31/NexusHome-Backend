@@ -1,16 +1,18 @@
 import express from 'express';
-import { createLedRoutes } from './routes/ledRoutes';
-import { LedService } from './services/ledService';
+import { createGpioRoutes } from './routes/gpioRoutes';
 import { WebSocketService } from './services/webSocket.service';
+import { GpioService } from './services/GpioService';
 
-export const createApp = (ledService: LedService, webSocketService: WebSocketService) => {
+export const createApp = (gpioService: GpioService, webSocketService: WebSocketService) => {
   const app = express();
+
   app.use(express.json());
 
-  app.use('/api/led', createLedRoutes(ledService, webSocketService));
+  app.use('/api/gpio', createGpioRoutes(gpioService, webSocketService));
 
   app.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
   });
+
   return app;
 };
