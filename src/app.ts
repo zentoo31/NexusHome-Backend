@@ -1,16 +1,13 @@
 import express from 'express';
-import { createLedRoutes } from './routes/ledRoutes';
-import { LedService } from './services/ledService';
-import { WebSocketService } from './services/webSocket.service';
+import ledRouter from './routes/led.route';
 
-export const createApp = (ledService: LedService, webSocketService: WebSocketService) => {
-  const app = express();
-  app.use(express.json());
+const app = express();
+app.use(express.json());
 
-  app.use('/api/led', createLedRoutes(ledService, webSocketService));
+app.use('/api/led', ledRouter);
 
-  app.get('/health', (req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
-  });
-  return app;
-};
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+  
+export default app;
