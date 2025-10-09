@@ -1,29 +1,23 @@
 import http from 'http';
-import WebSocket from 'ws';
-import { createApp } from './app';
-import { LedService } from './services/ledService';
-import { WebSocketService } from './services/webSocket.service';
+import { LedService } from './services/led.service';
+import { WebSocketService } from './config/websocket';
+import connectDB from './config/database';
+import dotenv from 'dotenv';
+import app from './app';
+
+dotenv.config();
+connectDB();
 
 const ledService = new LedService();
 const server = http.createServer();
 const PORT = process.env.PORT || 3000;
 
-const wss = new WebSocket.Server({ server });
-const webSocketService = new WebSocketService(wss, ledService);
-
-const app = createApp(ledService, webSocketService);
+const webSocketService = new WebSocketService(server);
 
 server.on('request', app);
 
 server.listen(PORT, () => {
-  console.log(`Servidor corriendo en puerto ${PORT}`);
-});
-
-process.on('SIGTERM', () => {
-  console.log('Recibido SIGTERM, cerrando servidor...');
-  server.close(() => {
-    console.log('Servidor cerrado');
-  });
+  console.log(`--> Servidor corriendo en puerto ${PORT}`);
 });
 
 export { server, webSocketService, ledService };
