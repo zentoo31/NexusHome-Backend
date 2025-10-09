@@ -48,7 +48,7 @@ export class WebSocketService {
       return;
     }
 
-    // Procesar mensajes JSON
+    // Parseador JSON
     try {
       const parsedMsg: WebSocketMessage = JSON.parse(message);
       
