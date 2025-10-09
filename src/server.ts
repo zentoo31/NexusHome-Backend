@@ -1,5 +1,5 @@
 import http from 'http';
-import { LedService } from './services/led.service';
+import { GpioService } from './services/gpio.service';
 import { WebSocketService } from './config/websocket';
 import connectDB from './config/database';
 import dotenv from 'dotenv';
@@ -8,7 +8,7 @@ import app from './app';
 dotenv.config();
 connectDB();
 
-const ledService = new LedService();
+const gpioService = new GpioService([15, 2, 4, 16, 17, 5, 18]);
 const server = http.createServer();
 const PORT = process.env.PORT || 3000;
 
@@ -18,6 +18,7 @@ server.on('request', app);
 
 server.listen(PORT, () => {
   console.log(`--> Servidor corriendo en puerto ${PORT}`);
+  console.log('--> Pines GPIO configurados:', gpioService.getAllPins().map(p => p.pin));
 });
 
-export { server, webSocketService, ledService };
+export { server, webSocketService, gpioService };

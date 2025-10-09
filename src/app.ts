@@ -1,10 +1,10 @@
 import express from 'express';
-import ledRouter from './routes/led.route';
+import gpioRouter from './routes/gpio.route';
 
 const app = express();
 app.use(express.json());
 
-app.use('/api/led', ledRouter);
+app.use('/api/gpio', gpioRouter);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });

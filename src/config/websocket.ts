@@ -1,16 +1,16 @@
 import WebSocket, { WebSocketServer } from 'ws';
-import { LedService } from '../services/led.service';
-import { WebSocketMessage } from '../interfaces/led.state';
+import { GpioService } from '../services/gpio.service';
+import { WebSocketMessage, isGpioMessage } from '../interfaces/gpio.state';
 import { Server } from 'http';
 
 export class WebSocketService {
   private wss: WebSocket.Server;
-  private ledService: LedService;
+  private gpioService: GpioService;
   private esp32Client: WebSocket | null = null;
 
   constructor(server: Server) {
     this.wss = new WebSocketServer({ server });
-    this.ledService = new LedService();
+    this.gpioService = new GpioService();
     this.setupWebSocketHandlers();
   }
 
@@ -18,15 +18,13 @@ export class WebSocketService {
     this.wss.on('connection', (ws: WebSocket) => {
       console.log('New client connected');
 
-      // Enviar estado actual del LED al nuevo cliente
-      this.sendLedState(ws);
+      // Enviar estado actual de todos los pines al nuevo cliente
+      this.sendAllPinsState(ws);
 
-      // Manejar mensajes entrantes
       ws.on('message', (data: Buffer) => {
         this.handleMessage(ws, data);
       });
 
-      // Manejar cierre de conexión
       ws.on('close', () => {
         console.log('Client disconnected');
         if (ws === this.esp32Client) {
@@ -41,14 +39,12 @@ export class WebSocketService {
     const message = data.toString();
     console.log('Message received:', message);
 
-    // Identificar al ESP32 (mensaje de texto simple)
+    // Identificar al ESP32
     if (message === 'ESP32') {
       this.esp32Client = ws;
       console.log('ESP32 registered as client');
-      // Enviar estado actual al ESP32
-      if (this.esp32Client.readyState === WebSocket.OPEN) {
-        this.esp32Client.send(this.ledService.getLedState().status);
-      }
+      // Enviar estado actual de todos los pines al ESP32
+      this.sendAllPinsStateToESP32();
       return;
     }
 
@@ -56,71 +52,108 @@ export class WebSocketService {
     try {
       const parsedMsg: WebSocketMessage = JSON.parse(message);
       
-      if (parsedMsg.type === 'led' && parsedMsg.value) {
-        this.handleLedMessage(parsedMsg.value, ws);
+      if (isGpioMessage(parsedMsg)) {
+        this.handleGpioMessage(parsedMsg, ws);
+      } else if (parsedMsg.type === 'get_all_pins') {
+        this.sendAllPinsState(ws);
+      } else if (parsedMsg.type === 'get_pin') {
+        this.sendPinState(parsedMsg.pin, ws);
+      } else {
+        console.log('Unknown message type:', parsedMsg.type);
       }
     } catch (error) {
       console.error('Error parsing message as JSON:', error);
-      // Opcional: enviar mensaje de error al cliente
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ 
-          type: 'error', 
-          message: 'Invalid JSON format' 
-        }));
-      }
+      this.sendError(ws, 'Invalid JSON format');
     }
   }
 
-  private handleLedMessage(value: string, ws: WebSocket): void {
-    if (value === 'on' || value === 'off') {
-      // Actualizar estado del LED
-      this.ledService.setLedState(value);
+  private handleGpioMessage(message: WebSocketMessage, ws: WebSocket): void {
+    if (typeof message.pin !== 'number') {
+      this.sendError(ws, 'Pin number is required');
+      return;
+    }
+
+    if (message.value && (message.value === 'on' || message.value === 'off')) {
+      // Actualizar estado del pin
+      const updatedPin = this.gpioService.setPinStatus(message.pin, message.value);
       
+      if (!updatedPin) {
+        this.sendError(ws, `Pin ${message.pin} not found`);
+        return;
+      }
+
       // Reenviar comando al ESP32 si está conectado
       if (this.esp32Client && this.esp32Client.readyState === WebSocket.OPEN) {
-        this.esp32Client.send(value);
+        const esp32Message = `${message.pin}:${message.value}`;
+        this.esp32Client.send(esp32Message);
       }
       
-      // Broadcast a todos los clientes web (excepto al remitente y ESP32)
-      this.broadcastLedState(ws);
+      this.broadcastPinState(updatedPin, ws);
     }
   }
 
-  private sendLedState(ws: WebSocket): void {
+  private sendAllPinsState(ws: WebSocket): void {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ 
-        type: 'led', 
-        value: this.ledService.getLedState().status 
+        type: 'all_pins', 
+        pins: this.gpioService.getAllPins() 
       }));
     }
   }
 
-  private broadcastLedState(excludeClient: WebSocket): void {
-    const ledState = this.ledService.getLedState();
+  private sendPinState(pinNumber: number | undefined, ws: WebSocket): void {
+    if (pinNumber === undefined || ws.readyState !== WebSocket.OPEN) return;
     
+    const pin = this.gpioService.getPin(pinNumber);
+    if (pin) {
+      ws.send(JSON.stringify({ 
+        type: 'pin_update', 
+        pin 
+      }));
+    } else {
+      this.sendError(ws, `Pin ${pinNumber} not found`);
+    }
+  }
+
+  private sendAllPinsStateToESP32(): void {
+    if (!this.esp32Client || this.esp32Client.readyState !== WebSocket.OPEN) return;
+    
+    const pins = this.gpioService.getAllPins();
+    pins.forEach(pin => {
+      const message = `${pin.pin}:${pin.status}`;
+      this.esp32Client!.send(message);
+    });
+  }
+
+  private broadcastPinState(pin: any, excludeClient: WebSocket): void {
     this.wss.clients.forEach((client) => {
       if (client !== excludeClient && 
           client !== this.esp32Client &&
           client.readyState === WebSocket.OPEN) {
         client.send(JSON.stringify({ 
-          type: 'led', 
-          value: ledState.status 
+          type: 'pin_update', 
+          pin 
         }));
       }
     });
+  }
+
+  private sendError(ws: WebSocket, message: string): void {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ 
+        type: 'error', 
+        message 
+      }));
+    }
   }
 
   public getEsp32Client(): WebSocket | null {
     return this.esp32Client;
   }
 
-
-  // Método para broadcast a todos los clientes (incluyendo ESP32 si es necesario)
-  public broadcastToAll(message: string): void {
-    this.wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
+  public sendToEsp32(message: string): void {
+    if (this.esp32Client && this.esp32Client.readyState === WebSocket.OPEN) {
+      this.esp32Client.send(message);
+    }
   }
 }
