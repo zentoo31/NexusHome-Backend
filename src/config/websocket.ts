@@ -16,7 +16,7 @@ export class WebSocketService {
 
   private setupWebSocketHandlers(): void {
     this.wss.on('connection', (ws: WebSocket) => {
-      console.log('New client connected');
+      console.log('--> Nuevo cliente conectado');
 
       // Enviar estado actual de todos los pines al nuevo cliente
       this.sendAllPinsState(ws);
@@ -26,10 +26,10 @@ export class WebSocketService {
       });
 
       ws.on('close', () => {
-        console.log('Client disconnected');
+        console.log('--> Cliente desconectado');
         if (ws === this.esp32Client) {
           this.esp32Client = null;
-          console.log('ESP32 disconnected');
+          console.log('--> ESP32 desconectado');
         }
       });
     });
@@ -37,12 +37,12 @@ export class WebSocketService {
 
   private handleMessage(ws: WebSocket, data: Buffer): void {
     const message = data.toString();
-    console.log('Message received:', message);
+    console.log('--> Mensaje recibido:', message);
 
     // Identificar al ESP32
     if (message === 'ESP32') {
       this.esp32Client = ws;
-      console.log('ESP32 registered as client');
+      console.log('--> ESP32 registrado como cliente');
       // Enviar estado actual de todos los pines al ESP32
       this.sendAllPinsStateToESP32();
       return;
