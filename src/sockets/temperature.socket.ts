@@ -13,7 +13,7 @@ export function TemperatureSocket(ws: WebSocket, context: any) {
                 const newTemp = await temperatureService.setCurrentTemperature(parseFloat(parsed.value as string));
                 context.wss.clients.forEach((client: WebSocket) => {
                     if (client !== ws && client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ type: 'new_temperature', temperature: newTemp }));
+                        client.send(JSON.stringify({ type: 'current_temperature', temperature: newTemp }));
                     }
                 });
                 console.log('--> 🌡️ Nueva temperatura registrada:', newTemp.value);
