@@ -9,7 +9,7 @@ export function Esp32Socket(ws: WebSocket, context: any) {
 
     if (message === 'ESP32') {
       console.log('--> 🔗 ESP32 conectado');
-      (context as any).esp32Client = ws;
+      (ws as any).isEsp32 = true;
 
       // Enviar todos los estados iniciales al ESP32 formato pin:status
       gpioService.getAllPins().forEach(pin => {
