@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { GpioService } from '../services/gpio.service';
-import { WebSocketMessage, isGpioMessage } from '../interfaces/gpio.state';
+import { GpioWebSocketMessage, WebSocketMessage, isGpioMessage } from '../interfaces/gpio.state';
 
 const gpioService = new GpioService();
 
@@ -29,9 +29,9 @@ export function GpioSocket(ws: WebSocket, context: any) {
 
 }
 
-function handleGpioMessage(message: WebSocketMessage, ws: WebSocket, context: any) {
+function handleGpioMessage(message: GpioWebSocketMessage, ws: WebSocket, context: any) {
     if (message.value === 'on' || message.value === 'off') {
-        const updatedPin = gpioService.setPinStatus(message.pinNumber, message.value);
+        const updatedPin = gpioService.setPinStatus(message.pin, message.value);
         if (!updatedPin) {
             sendError(ws, `Pin ${message.pin} no encontrado`);
             return;
@@ -39,8 +39,15 @@ function handleGpioMessage(message: WebSocketMessage, ws: WebSocket, context: an
 
         // Notificar a todos los demás clientes conectados
         context.wss.clients.forEach((client: WebSocket) => {
-            if (client !== ws && client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({ type: 'pin_update', pin: updatedPin }));
+            if (client.readyState !== WebSocket.OPEN) return;
+            
+            if((client as any).isEsp32){
+                client.send(`${updatedPin.pin}:${updatedPin.status}`);
+            } else if (client !== ws) {
+                client.send(JSON.stringify({
+                    type: 'pin_update',
+                    pin: updatedPin
+                }))
             }
         });
     }
