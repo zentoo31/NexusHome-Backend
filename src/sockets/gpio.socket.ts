@@ -43,11 +43,8 @@ function handleGpioMessage(message: GpioWebSocketMessage, ws: WebSocket, context
             
             if((client as any).isEsp32){
                 client.send(`${updatedPin.pin}:${updatedPin.status}`);
-            } else if (client !== ws) {
-                client.send(JSON.stringify({
-                    type: 'pin_update',
-                    pin: updatedPin
-                }))
+            } else {
+                sendAllPins(client);
             }
         });
     }
