@@ -1,8 +1,7 @@
 import WebSocket from 'ws';
-import { GpioService } from '../services/gpio.service';
+import { gpioService } from '../services/gpio.service';
 import { GpioWebSocketMessage, WebSocketMessage, isGpioMessage } from '../interfaces/gpio.state';
 
-const gpioService = new GpioService();
 
 export function GpioSocket(ws: WebSocket, context: any) {
     ws.on('message', (data: Buffer) => {
