@@ -9,7 +9,7 @@ export function TemperatureSocket(ws: WebSocket, context: any) {
         try {
             if (data.toString() === 'ESP32') return;
             const parsed: WebSocketMessage = JSON.parse(data.toString());
-            if (parsed.type === 'set_teperature') {
+            if (parsed.type === 'set_temperature') {
                 const newTemp = await temperatureService.setCurrentTemperature(parseFloat(parsed.value as string));
                 context.wss.clients.forEach((client: WebSocket) => {
                     if (client !== ws && client.readyState === WebSocket.OPEN) {
