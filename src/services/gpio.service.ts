@@ -73,3 +73,6 @@ export class GpioService {
     return true;
   }
 }
+
+// Export a singleton instance so sockets can share GPIO state
+export const gpioService = new GpioService();
