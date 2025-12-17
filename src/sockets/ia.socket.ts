@@ -1,5 +1,6 @@
 import WebSocket from "ws";
 import { gpioService } from "../services/gpio.service";
+import { TemperatureService } from "../services/temperature.service";
 
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
 
@@ -11,6 +12,8 @@ export function IaSocket(ws: WebSocket, context: any) {
     // un mensaje JSON { type: 'init_ia' } o puede enviar comandos puntuales con
     // { type: 'command_ia', text: '...' , oneShot: true }
     (ws as any).isIaClient = false;
+
+    const temperatureService = new TemperatureService();
 
     ws.on('message', async (data: Buffer) => {
         try {
@@ -63,7 +66,9 @@ export function IaSocket(ws: WebSocket, context: any) {
                     sala: [15],
                     cocina: [2],
                     habitacion: [4],
-                    bano: [16],
+                    baño: [16],
+                    lavanderia: [17],
+                    garaje: [5],
                     todas: gpioService.getAllPins().map((p: any) => p.pin),
                 };
 
@@ -74,6 +79,19 @@ export function IaSocket(ws: WebSocket, context: any) {
 
                     // Si no hay pins para la ubicacion, no hacer nada
                     if (pins.length === 0) return;
+
+                    // Construir mensaje con tono domótico
+                    let formattedMensaje: string | null = null;
+                    try {
+                        const locText = loc === 'todas' ? (value === 'on' ? 'todas las luces' : 'todas las luces') : `la luz de ${loc}`;
+                        const actionWord = value === 'on' ? 'Encendiendo' : 'Apagando';
+                        // Preferir mensaje de la IA si existe, sino generar uno domótico
+                        formattedMensaje = accion.mensaje && typeof accion.mensaje === 'string'
+                            ? accion.mensaje
+                            : `${actionWord} ${locText}.`;
+                    } catch (err) {
+                        formattedMensaje = accion.mensaje || null;
+                    }
 
                     // Cambiar estado de cada pin y notificar a clientes como en gpio.socket
                     pins.forEach(pinNumber => {
@@ -89,22 +107,52 @@ export function IaSocket(ws: WebSocket, context: any) {
                             console.log(`[IA Socket] intento de actualizar pin ${pinNumber} falló (no encontrado)`);
                         }
 
-                        // Notificar a todos los clientes conectados
-                        context.wss.clients.forEach((client: WebSocket) => {
-                            if (client.readyState !== WebSocket.OPEN) return;
+                                // Notificar a todos los clientes conectados
+                                context.wss.clients.forEach((client: WebSocket) => {
+                                    if (client.readyState !== WebSocket.OPEN) return;
 
-                            if ((client as any).isEsp32) {
-                                if (updatedPin) client.send(`${updatedPin.pin}:${updatedPin.status}`);
-                            } else {
-                                client.send(
-                                    JSON.stringify({
-                                        type: 'all_pins',
-                                        pins: gpioService.getAllPins(),
-                                    }),
-                                );
-                            }
-                        });
+                                    if ((client as any).isEsp32) {
+                                        if (updatedPin) client.send(`${updatedPin.pin}:${updatedPin.status}`);
+                                    } else {
+                                        client.send(
+                                            JSON.stringify({
+                                                type: 'all_pins',
+                                                pins: gpioService.getAllPins(),
+                                                mensaje: formattedMensaje || null,
+                                            }),
+                                        );
+                                    }
+                                });
                     });
+                }
+
+                // Consultar temperatura actual
+                if (accion.accion === 'consultar_temperatura') {
+                    try {
+                        const currentTemp = await temperatureService.getCurrentTemperature();
+                        // Formatear mensaje domótico con el valor de temperatura si es posible
+                        const tempValue = (currentTemp as any)?.value ?? null;
+                        const formattedMensaje = accion.mensaje && typeof accion.mensaje === 'string'
+                            ? accion.mensaje
+                            : `Claro, la temperatura actual es: ${tempValue !== null ? tempValue + '°C' : 'desconocida'}.`;
+
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(
+                                JSON.stringify({
+                                    type: 'current_temperature',
+                                    temperature: currentTemp,
+                                    mensaje: formattedMensaje,
+                                }),
+                            );
+                        }
+                    } catch (err) {
+                        console.error('[IA Socket] error consultando temperatura:', err);
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: 'error', message: 'No se pudo obtener la temperatura actual' }));
+                        }
+                    }
+
+                    return;
                 }
 
                 return;
@@ -129,22 +177,24 @@ export function IaSocket(ws: WebSocket, context: any) {
 
 async function procesarConOllama(comando: String) {
     const prompt = `
-    Analiza este comando de voz y devuelve SOLO un objeto JSON válido sin explicaciones:
+    Analiza este comando de voz y devuelve SOLO un objeto JSON válido sin explicaciones.
+
+    IMPORTANTE: Incluye SIEMPRE una clave "mensaje" con una frase breve (en español) que describa lo que se hizo o se consultará. Ej: "He encendido la luz de la sala.".
 
     Comando: "${comando}"
 
     Posibles acciones:
-    - encender_luz [sala, cocina, habitacion, bano, todas]
-    - apagar_luz [sala, cocina, habitacion, bano, todas]
+    - encender_luz [sala, cocina, habitacion, baño, lavandería, garaje, todas]
+    - apagar_luz [sala, cocina, habitacion, baño, lavandería, garaje, todas]
     - consultar_temperatura
     - consultar_humedad
     - estado_luces
 
     Ejemplos:
-    "enciende la luz de la sala" → {"accion": "encender_luz", "ubicacion": "sala"}
-    "apaga las luces de la cocina" → {"accion": "apagar_luz", "ubicacion": "cocina"}
-    "qué temperatura hace" → {"accion": "consultar_temperatura"}
-    "apaga todas las luces" → {"accion": "apagar_luz", "ubicacion": "todas"}
+    "enciende la luz de la sala" → {"accion": "encender_luz", "ubicacion": "sala", "mensaje": "He encendido la luz de la sala."}
+    "apaga las luces de la cocina" → {"accion": "apagar_luz", "ubicacion": "cocina", "mensaje": "He apagado las luces de la cocina."}
+    "qué temperatura hace" → {"accion": "consultar_temperatura", "mensaje": "Consulto la temperatura actual."}
+    "apaga todas las luces" → {"accion": "apagar_luz", "ubicacion": "todas", "mensaje": "He apagado todas las luces."}
 
     Respuesta JSON:
     `;
